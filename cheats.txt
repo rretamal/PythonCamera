@@ -2,8 +2,11 @@ python -m venv myenv
 
 source myenv/bin/activate  # On Windows, use `myenv\Scripts\activate`
 
+deactivate
+
 pip freeze > requirements.txt
 
+pip install -r requirements.txt
 pip install -r requirements.txt
 
 https://github.com/onvif/specs

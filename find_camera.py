@@ -6,8 +6,6 @@ import os
 import cv2
 import concurrent.futures
 import threading
-import vlc
-import time
 import re
 import multiprocessing
 
