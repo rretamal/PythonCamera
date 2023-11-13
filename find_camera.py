@@ -14,9 +14,9 @@ from multiprocessing import Process, Queue, Event
 
 cameraUrl = 'https://www.ispyconnect.com'
 
-cap = cv2.VideoCapture("rtsp://192.168.100.32:554/11")
-ret, frame = cap.read()
-cap.release()
+#cap = cv2.VideoCapture("rtsp://192.168.100.32:554/11")
+#ret, frame = cap.read()
+#cap.release()
 
 def obtener_detalles_camara(url):
     # Esta función debería ser implementada para seguir el enlace a la página de la cámara
@@ -195,7 +195,7 @@ def prueba_rtsp(url, resultado, evento_terminado):
     except:
         evento_terminado.set()
 
-def probar_conexion_rtsp(url, timeout=20):
+def probar_conexion_rtsp(url, timeout=30):
     try:
         resultado = Queue()
         evento_terminado = Event()
@@ -225,7 +225,6 @@ def probar_conexion_rtsp(url, timeout=20):
                 encontrado = True
                 return f"Conexión exitosa a {url}"
             else:
-                print(f"Fallo en la conexión a {url}")
                 return ''
         else:
             # Si el evento no está establecido, se asume que el proceso no terminó correctamente
@@ -233,8 +232,6 @@ def probar_conexion_rtsp(url, timeout=20):
             return ''
     except:
         return ''
-
-    
 
 def probar_conexion(url):
     global contador
