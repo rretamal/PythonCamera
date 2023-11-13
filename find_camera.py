@@ -6,10 +6,17 @@ import os
 import cv2
 import concurrent.futures
 import threading
+#import vlc
+import time
 import re
-import multiprocessing
+
+from multiprocessing import Process, Queue, Event
 
 cameraUrl = 'https://www.ispyconnect.com'
+
+cap = cv2.VideoCapture("rtsp://192.168.100.32:554/11")
+ret, frame = cap.read()
+cap.release()
 
 def obtener_detalles_camara(url):
     # Esta función debería ser implementada para seguir el enlace a la página de la cámara
@@ -19,6 +26,7 @@ def obtener_detalles_camara(url):
 
 def scrape_cameras(url):
     global cameraUrl
+    
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
 
@@ -177,42 +185,59 @@ def probar_conexion_http(url):
         #return f"Fallo en la conexión a {url}. Código de estado: {respuesta.status_code}"
 
 def prueba_rtsp(url, resultado, evento_terminado):
-    print(url)
-    cap = cv2.VideoCapture(url)
-    ret, frame = cap.read()
-    cap.release()
-    resultado.put(ret)  # Poner el resultado en la cola
-    evento_terminado.set()  # Indicar que el proceso ha terminado
+    try:
+        print(url)
+        cap = cv2.VideoCapture(url)
+        ret, frame = cap.read()
+        cap.release()
+        resultado.put(ret)  # Poner el resultado en la cola
+        evento_terminado.set()  # Indicar que el proceso ha terminado
+    except:
+        evento_terminado.set()
 
-def probar_conexion_rtsp(url, timeout=5):
-    global contador, encontrado
+def probar_conexion_rtsp(url, timeout=20):
+    try:
+        resultado = Queue()
+        evento_terminado = Event()
 
-    resultado = multiprocessing.Queue()  # Cola para almacenar el resultado
-    evento_terminado = multiprocessing.Event()  # Evento para indicar la terminación del proceso
-    proceso = multiprocessing.Process(target=prueba_rtsp, args=(url, resultado, evento_terminado))
-    proceso.start()
-    proceso.join(timeout)  # Esperar por el timeout
+        # Iniciar el proceso que ejecuta la función de prueba RTSP
+        proceso = Process(target=prueba_rtsp, args=(url, resultado, evento_terminado))
+        proceso.start()
 
-    with lock:
-        contador += 1  # Incrementar el contador
+        # Esperar por el timeout o hasta que el evento esté establecido, lo que ocurra primero
+        proceso.join(timeout)
 
-    if evento_terminado.is_set():
-        # Si el evento está establecido, el proceso terminó normalmente
-        ret = resultado.get()
-        if ret:
-            encontrado = True
-            return f"Conexión exitosa a {url}"
+        if proceso.is_alive():
+            # Si el proceso sigue vivo después del timeout, se debe terminar
+            proceso.terminate()
+            proceso.join()  # Es importante unirse después de terminar para limpiar los recursos del proceso
+
+        # Incrementar el contador con seguridad usando un bloqueo
+        with lock:
+            global contador, encontrado
+            contador += 1
+
+        # Verificar si el evento fue establecido por el proceso, lo que indica que se completó correctamente
+        if evento_terminado.is_set():
+            ret = resultado.get()  # Obtener el resultado del proceso
+
+            if ret:
+                encontrado = True
+                return f"Conexión exitosa a {url}"
+            else:
+                print(f"Fallo en la conexión a {url}")
+                return ''
         else:
-            print(f"Fallo en la conexión a {url}")
+            # Si el evento no está establecido, se asume que el proceso no terminó correctamente
+            print(f"La prueba RTSP para {url} no terminó antes del timeout")
             return ''
-    else:
-        # Si el evento no está establecido, el proceso no terminó, por lo que se debe terminar
-        proceso.terminate()
+    except:
         return ''
 
     
 
 def probar_conexion(url):
+    global contador
     resultado = None
 
     if(url is None):
@@ -225,8 +250,10 @@ def probar_conexion(url):
     else:
         resultado = f"Protocolo no reconocido en la URL: {url}"
     
-    # Imprimir el contador y el total de URLs
-    print(f'Progreso: {contador}/{len(urls)}')
+    if contador > 1:
+        # Imprimir el contador y el total de URLs
+        print(f'Progreso: {contador}/{len(urls)}')
+    
     return resultado
 
 def probar_conexiones(urls):
