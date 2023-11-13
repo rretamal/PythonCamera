@@ -30,7 +30,7 @@ def scrape_cameras(url):
     
     with open('cameras.csv', mode='w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
-        writer.writerow(['Marca', 'Modelo', 'Tipo', 'Protocolo', 'URL'])  # Head of the csv
+        writer.writerow(['Brand', 'Model', 'Type', 'Protocol', 'URL'])  # Head of the csv
         
         for row in rows:
             cols = row.find_all('td')
@@ -155,4 +155,8 @@ if(not os.path.isfile('cameras.csv')):
 
 # Run the scan
 found_ports = scan_ips(start_ip, end_ip)
+
+for device in found_ports:
+    print(device)
+
 print("Found open ports:", found_ports)
