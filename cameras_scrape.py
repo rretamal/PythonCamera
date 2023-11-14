@@ -4,6 +4,8 @@ import os
 import requests
 from bs4 import BeautifulSoup
 import csv
+import url_locator
+import pandas as pd
 
 # Define the range of IP addresses to scan (e.g., '192.168.1.1' to '192.168.1.255')
 start_ip = '192.168.100.1'
@@ -156,7 +158,9 @@ if(not os.path.isfile('cameras.csv')):
 # Run the scan
 found_ports = scan_ips(start_ip, end_ip)
 
-for device in found_ports:
-    print(device)
+df = pd.read_csv('cameras.csv')
 
-print("Found open ports:", found_ports)
+for device in found_ports:
+    result = url_locator.scan_urls(device[0], device[1], "", df)
+    print(result)
+

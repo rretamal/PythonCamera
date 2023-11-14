@@ -13,158 +13,156 @@ import re
 from multiprocessing import Process, Queue, Event
 
 def _fix_url(url):
-    # Split the url
+    # Split the URL
     parts = re.match(r"(?P<protocol>[a-zA-Z]+)://(?P<ip>[0-9.]+):(?P<port>[0-9]+)(?P<path>.*)", url)
 
     if parts:
-        # Rebuild
+        # Rebuild the URL
         protocol = parts.group('protocol')
         ip = parts.group('ip')
         port = parts.group('port')
         path = parts.group('path')
 
-        
         if not path.startswith('/'):
             path = '/' + path
 
         fixed_url = f"{protocol}://{ip}:{port}{path}"
-
         return fixed_url
     else:
         print(f"URL not recognized: {url}")
         return None
 
 def _build_url(protocol, ip, port, path):
-    
     # Check protocol '://'
     if protocol.endswith('://'):
         return f"{protocol}{ip}:{port}{path}"
     else:
         return f"{protocol}://{ip}:{port}{path}"
 
-def probar_conexion_http(url):
-    global contador
+def _test_http_connection(url):
+    global counter
     try:
-        with requests.Session() as sesion:
-            respuesta = sesion.get(url, timeout=2, verify=False)
+        with requests.Session() as session:
+            response = session.get(url, timeout=2, verify=False)
     except requests.exceptions.RequestException as e:
         with lock:
-            contador += 1
-        return f"Excepción al tratar de conectar a {url}: {e}"
+            counter += 1
+        return f"Exception when trying to connect to {url}: {e}"
     
     with lock:
-        contador += 1
-    if respuesta.status_code == 200:
-        return f"Conexión exitosa a {url}"
+        counter += 1
+    if response.status_code == 200:
+        return f"Successful connection to {url}"
     else:
-        print(f"Fallo en la conexión a {url}. Código de estado: {respuesta.status_code}")
-        #return f"Fallo en la conexión a {url}. Código de estado: {respuesta.status_code}"
+        print(f"Connection failure to {url}. Status code: {response.status_code}")
+        #return f"Connection failure to {url}. Status code: {response.status_code}"
 
-def prueba_rtsp(url, resultado, evento_terminado):
+def _test_rtsp(url, result, finished_event):
     try:
         print(url)
         cap = cv2.VideoCapture(url)
         ret, frame = cap.read()
         cap.release()
-        resultado.put(ret)  # Poner el resultado en la cola
-        evento_terminado.set()  # Indicar que el proceso ha terminado
+        result.put(ret)  # Put the result in the queue
+        finished_event.set()  # Indicate that the process has finished
     except:
-        evento_terminado.set()
+        finished_event.set()
 
-def probar_conexion_rtsp(url, timeout=30):
+def _test_rtsp_connection(url, timeout=30):
     try:
-        resultado = Queue()
-        evento_terminado = Event()
+        result = Queue()
+        finished_event = Event()
 
-        # Iniciar el proceso que ejecuta la función de prueba RTSP
-        proceso = Process(target=prueba_rtsp, args=(url, resultado, evento_terminado))
-        proceso.start()
+        # Start the process that executes the RTSP test function
+        process = Process(target=_test_rtsp, args=(url, result, finished_event))
+        process.start()
 
-        # Esperar por el timeout o hasta que el evento esté establecido, lo que ocurra primero
-        proceso.join(timeout)
+        # Wait for the timeout or until the event is set, whichever comes first
+        process.join(timeout)
 
-        if proceso.is_alive():
-            # Si el proceso sigue vivo después del timeout, se debe terminar
-            proceso.terminate()
-            proceso.join()  # Es importante unirse después de terminar para limpiar los recursos del proceso
+        if process.is_alive():
+            # If the process is still alive after the timeout, it should be terminated
+            process.terminate()
+            process.join()  # It's important to join after terminating to clean up process resources
 
-        # Incrementar el contador con seguridad usando un bloqueo
-        with lock:
-            global contador, encontrado
-            contador += 1
+        # Safely increment the counter using a lock
+        #with lock:
+        #    global counter, found
+        #    counter += 1
 
-        # Verificar si el evento fue establecido por el proceso, lo que indica que se completó correctamente
-        if evento_terminado.is_set():
-            ret = resultado.get()  # Obtener el resultado del proceso
+        # Check if the event was set by the process, indicating it completed successfully
+        if finished_event.is_set():
+            ret = result.get()  # Get the result of the process
 
             if ret:
-                encontrado = True
-                return f"Conexión exitosa a {url}"
+                found = True
+                return f"Successful connection to {url}"
             else:
                 return ''
         else:
-            # Si el evento no está establecido, se asume que el proceso no terminó correctamente
-            print(f"La prueba RTSP para {url} no terminó antes del timeout")
+            # If the event is not set, assume the process did not complete successfully
+            print(f"RTSP test for {url} did not finish before the timeout")
             return ''
     except:
         return ''
 
-def probar_conexion(url):
-    global contador
-    resultado = None
+def _test_connection(url):
+    global counter
+    result = None
 
     if(url is None):
         return ''
 
     if 'http' in url:
-        resultado = probar_conexion_http(url)
+        result = _test_http_connection(url)
     elif 'rtsp' in url:
-        resultado = probar_conexion_rtsp(url)
+        result = _test_rtsp_connection(url)
     else:
-        resultado = f"Protocolo no reconocido en la URL: {url}"
+        result = f"Unrecognized protocol in URL: {url}"
     
-    if contador > 1:
-        # Imprimir el contador y el total de URLs
-        print(f'Progreso: {contador}/{len(urls)}')
+    #if counter > 1:
+        # Print the counter and total URLs
+    #    print(f'Progress: {counter}/{len(urls)}')
     
-    return resultado
+    return result
 
-def probar_conexiones(urls):
+def _test_connections(urls):
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-        resultados = list(executor.map(probar_conexion, urls))
-    return resultados
+        results = list(executor.map(_test_connection, urls))
+    return results
 
-def abrir_camara(url):
+def _open_camera(url):
     cap = cv2.VideoCapture(url)
     while(cap.isOpened()):
         ret, frame = cap.read()
         if ret:
-            cv2.imshow('Cámara', frame)
+            cv2.imshow('Camera', frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         else:
             break
     cap.release()
     cv2.destroyAllWindows()
-    
-def ScanUrls(ip, opened_ports, brand, df_models):
 
-    for port in opened_ports:
+def scan_urls(ip, port, brand, df_models):
+    df = df_models
 
-        df = df_models
+    if brand and not brand.isspace():
+        df = df[df['Model'].str.contains(brand, case=False, na=False)]
 
-        if brand and not brand.isspace():
-            df = df[df['Model'].str.contains(brand, case=False, na=False)]
+    if port == 554:
+        df = df[df['Protocol'].str.contains('rtsp', case=False, na=False)]
+    else:
+        df = df[df['Protocol'].str.contains('http', case=False, na=False)]
 
-            if port == '554':
-                df = df[df['Protocol'].str.contains('rtsp', case=False, na=False)]
-            else:
-                df = df[df['Protocol'].str.contains('http', case=False, na=False)]
+    df['Complete_URL'] = df.apply(lambda row: _fix_url(_build_url(row['Protocol'], ip, port, row['URL'])), axis=1)
+    df['Complete_URL'] = df['Complete_URL'].str.rstrip('/')
+    df = df.drop_duplicates(subset='Complete_URL')
 
-            df['URL_complete'] = df.apply(lambda row: _fix_url(_build_url(row['Protocolo'], ip, port, row['URL'])), axis=1)
-            df['URL_complete'] = df['URL_complete'].str.rstrip('/')
-            df = df.drop_duplicates(subset='URL_complete')
+    urls = df['Complete_URL']
 
-            lock = threading.Lock()
-            contador = 0
-            encontrado = False
+    results = _test_connections(urls)
+
+    for result in results:
+        if(not result is None):
+            return result
