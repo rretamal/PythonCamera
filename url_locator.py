@@ -68,7 +68,7 @@ def _test_rtsp(url, result, finished_event):
     except:
         finished_event.set()
 
-def _test_rtsp_connection(url, timeout=30):
+def _test_rtsp_connection(url, timeout=10):
     try:
         result = Queue()
         finished_event = Event()
@@ -106,11 +106,14 @@ def _test_rtsp_connection(url, timeout=30):
     except:
         return ''
 
+found_camera = False 
+
 def _test_connection(url):
-    global counter
+    global found_camera
     result = None
 
-    if(url is None):
+    # Verifica si ya se encontró una cámara
+    if found_camera or url is None:
         return ''
 
     if 'http' in url:
@@ -119,19 +122,28 @@ def _test_connection(url):
         result = _test_rtsp_connection(url)
     else:
         result = f"Unrecognized protocol in URL: {url}"
-    
-    #if counter > 1:
-        # Print the counter and total URLs
-    #    print(f'Progress: {counter}/{len(urls)}')
-    
+
+    # Si se encuentra una cámara, actualiza la variable global
+    if result and "Successful connection" in result:
+        found_camera = True
+
     return result
 
 def _test_connections(urls):
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-        results = list(executor.map(_test_connection, urls))
-    return results
+        future_to_url = {executor.submit(_test_connection, url): url for url in urls}
+        for future in concurrent.futures.as_completed(future_to_url):
+            if found_camera:
+                return future.result()  # Retorna el resultado de la cámara encontrada
+            try:
+                result = future.result()
+                if found_camera:
+                    return result
+            except Exception as exc:
+                continue
+    return None
 
-def _open_camera(url):
+def open_camera(url):
     cap = cv2.VideoCapture(url)
     while(cap.isOpened()):
         ret, frame = cap.read()
@@ -145,6 +157,9 @@ def _open_camera(url):
     cv2.destroyAllWindows()
 
 def scan_urls(ip, port, brand, df_models):
+    global found_camera
+    found_camera = False
+
     df = df_models
 
     if brand and not brand.isspace():
@@ -155,8 +170,11 @@ def scan_urls(ip, port, brand, df_models):
     else:
         df = df[df['Protocol'].str.contains('http', case=False, na=False)]
 
-    df['Complete_URL'] = df.apply(lambda row: _fix_url(_build_url(row['Protocol'], ip, port, row['URL'])), axis=1)
-    df['Complete_URL'] = df['Complete_URL'].str.rstrip('/')
+    df = df.copy()
+
+    df.loc[:, 'Complete_URL'] = df.apply(lambda row: _fix_url(_build_url(row['Protocol'], ip, port, row['URL'])), axis=1)
+    df.loc[:, 'Complete_URL'] = df['Complete_URL'].str.rstrip('/')
+
     df = df.drop_duplicates(subset='Complete_URL')
 
     urls = df['Complete_URL']

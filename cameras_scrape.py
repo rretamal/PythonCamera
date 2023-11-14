@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 import csv
 import url_locator
 import pandas as pd
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Define the range of IP addresses to scan (e.g., '192.168.1.1' to '192.168.1.255')
 start_ip = '192.168.100.1'
@@ -120,7 +121,7 @@ def check_port(ip, port):
 
 # Function to scan a single IP
 def scan_ip(ip):
-    print("Testing: " + ip)
+    print("Testing ip: " + ip)
     results = []
     for port in ports_to_check:
         result = check_port(ip, port)
@@ -134,6 +135,8 @@ def scan_ips(start_ip, end_ip):
     end_tuple = ip_to_tuple(end_ip)
     open_ports = []
     
+    print("scan_ips")
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
         future_to_ip = {executor.submit(scan_ip, ip): ip for ip in generate_ips(start_ip, end_ip)}
         for future in concurrent.futures.as_completed(future_to_ip):
@@ -152,15 +155,24 @@ def generate_ips(start_ip, end_ip):
         yield current_ip
         current_ip = increment_ip(current_ip)
 
-if(not os.path.isfile('cameras.csv')):
-    scrape_cameras(url)
 
-# Run the scan
-found_ports = scan_ips(start_ip, end_ip)
+if __name__ == "__main__":
 
-df = pd.read_csv('cameras.csv')
+    if(not os.path.isfile('cameras.csv')):
+        scrape_cameras(url)
 
-for device in found_ports:
-    result = url_locator.scan_urls(device[0], device[1], "", df)
-    print(result)
+    # Run the scan
+    found_ports = scan_ips(start_ip, end_ip)
 
+    df = pd.read_csv('cameras.csv')
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+
+        futures = [executor.submit(url_locator.scan_urls, device[0], device[1], "", df) for device in found_ports]
+
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                print(result)
+            except Exception as exc:
+                print(f'La llamada a scan_urls generó una excepción: {exc}')
